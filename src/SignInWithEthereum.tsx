@@ -10,10 +10,16 @@ export function SignInWithEthereum() {
   });
   const account = useAccount();
   const [valid, setValid] = useState<boolean | undefined>(undefined);
+  const [backendValid, setBackendValid] = useState<boolean | undefined>(
+    undefined
+  );
   const client = usePublicClient();
 
   const siweMessage = useMemo(() => {
     // return new SiweMessage("Hello, world!");
+    if (!account.address) {
+      return new SiweMessage({});
+    }
     const siweMsg = new SiweMessage({
       domain: document.location.host,
       address: account.address,
@@ -41,11 +47,41 @@ export function SignInWithEthereum() {
 
   const checkValid = useCallback(async () => {
     if (!signature || !account.address || !client) return;
+    console.log("verifying this", siweMessage.prepareMessage());
     const isValid = await client.verifyMessage({
       address: account.address,
       message: siweMessage.prepareMessage(),
       signature,
     });
+    console.log("signature", signature);
+    console.log("isValid", isValid);
+    console.log("address", account.address);
+
+    // Call backend verification API
+    const backendVerifyResponse = await fetch(
+      "https://bph3yyq8q4.execute-api.us-east-1.amazonaws.com/prod/verify",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chainId: siweMessage.chainId,
+          address: siweMessage.address,
+          nonce: siweMessage.nonce,
+          issuedAt: siweMessage.issuedAt,
+          domain: siweMessage.domain,
+          uri: siweMessage.uri,
+          version: siweMessage.version,
+          statement: siweMessage.statement,
+          signature: signature,
+        }),
+      }
+    );
+
+    const backendVerifyResult = await backendVerifyResponse.json();
+    console.log("Backend verification result:", backendVerifyResult.success);
+    setBackendValid(backendVerifyResult.success);
     setValid(isValid);
   }, [signature, account]);
 
@@ -58,7 +94,10 @@ export function SignInWithEthereum() {
       <h2>SIWE Example</h2>
       <button onClick={promptToSign}>Sign In with Ethereum</button>
       {signature && <p>Signature: {signature}</p>}
-      {valid !== undefined && <p>Is valid: {valid.toString()}</p>}
+      {valid !== undefined && <p>Local check is valid: {valid.toString()}</p>}
+      {backendValid !== undefined && (
+        <p>Backend check is valid: {backendValid.toString()}</p>
+      )}
     </div>
   );
 }
